@@ -1,0 +1,19 @@
+services:
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    environment:
+      - DB_PATH=/data/drinks.db
+    volumes:
+      - sqlite_data:/data
+
+  frontend:
+    build: ./frontend
+    restart: unless-stopped
+    ports:
+      - "3421:80"
+    depends_on:
+      - backend
+
+volumes:
+  sqlite_data:
