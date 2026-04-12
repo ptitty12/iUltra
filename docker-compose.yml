@@ -8,6 +8,8 @@ services:
       - DB_PATH=/data/drinks.db
     volumes:
       - sqlite_data:/data
+    networks:
+      - dokploy-network
 
   frontend:
     image: nginx:alpine
@@ -19,6 +21,12 @@ services:
       - "3421:80"
     depends_on:
       - backend
+    networks:
+      - dokploy-network
 
 volumes:
   sqlite_data:
+
+networks:
+  dokploy-network:
+    external: true
