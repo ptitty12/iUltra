@@ -151,7 +151,9 @@ const CLOSERS=["how are you doing?","what are you up to later?","you coming out 
 function pick(arr){return arr[Math.floor(Math.random()*arr.length)];}
 function buildReply(bac,std){return{opener:pick(OPENERS),bacStr:bac.toFixed(3),std:std.toFixed(1),closer:pick(CLOSERS)};}
 
-const API='/api';
+const API = window.location.hostname === 'localhost'
+  ? 'http://localhost:8000'
+  : 'https://drinks-api.ptaylor.dev';
 let sessions=[];
 let cur=null;
 
