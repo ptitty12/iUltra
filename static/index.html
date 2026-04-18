@@ -89,6 +89,8 @@
     .btn-cancel { background: #2c2c2e; color: #fff; }
     .btn-save { background: #0a84ff; color: #fff; font-weight: 500; }
     .btn-delete { background: #e24b4a; color: #fff; font-weight: 500; }
+    input[type="datetime-local"] { color-scheme: dark; }
+    .time-btn { width: 30px; height: 30px; border-radius: 50%; background: #2c2c2e; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: #0a84ff; }
   </style>
 </head>
 <body>
@@ -129,6 +131,9 @@
     </div>
     <div class="messages" id="messages"></div>
     <div class="input-area">
+      <button class="time-btn" id="time-btn" title="log for past time">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="#0a84ff" stroke-width="1.8"/><path d="M12 7v5l3 2" stroke="#0a84ff" stroke-width="1.8" stroke-linecap="round"/></svg>
+      </button>
       <div class="input-wrap" id="input-wrap"><div class="fake-input" id="fake-input"></div></div>
       <button class="send-btn" id="send-btn">
         <svg viewBox="0 0 24 24" width="14" height="14"><path d="M2 21l21-9L2 3v7l15 2-15 2z"/></svg>
@@ -150,10 +155,33 @@
 
   <div class="overlay" id="delete-overlay">
     <div class="modal-box">
-      <p>delete this drink?</p>
+      <p>what do you want to do?</p>
+      <div class="modal-actions" style="flex-direction:column;gap:8px;">
+        <button class="btn-save" id="edit-time-btn" style="width:100%;">edit time</button>
+        <button class="btn-delete" id="delete-confirm" style="width:100%;">delete</button>
+        <button class="btn-cancel" id="delete-cancel" style="width:100%;">cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="overlay" id="edit-time-overlay">
+    <div class="modal-box">
+      <p id="edit-time-title">edit drink time</p>
+      <input type="datetime-local" id="edit-time-input" />
       <div class="modal-actions">
-        <button class="btn-cancel" id="delete-cancel">cancel</button>
-        <button class="btn-delete" id="delete-confirm">delete</button>
+        <button class="btn-cancel" id="edit-time-cancel">cancel</button>
+        <button class="btn-save" id="edit-time-save">save</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="overlay" id="backdate-overlay">
+    <div class="modal-box">
+      <p>log drink for a past time?</p>
+      <input type="datetime-local" id="backdate-input" />
+      <div class="modal-actions">
+        <button class="btn-cancel" id="backdate-now">just now</button>
+        <button class="btn-save" id="backdate-save">use this time</button>
       </div>
     </div>
   </div>
@@ -171,6 +199,18 @@ const API='/api';
 let sessions=[];
 let cur=null;
 let pendingDeleteId=null;
+let pendingEditId=null;
+let pendingBackdateTs=null;
+
+function tsToLocalInput(ts){
+  // convert ms timestamp to 'YYYY-MM-DDTHH:MM' local for datetime-local input
+  const d=new Date(ts);
+  const pad=n=>String(n).padStart(2,'0');
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+function localInputToTs(v){
+  return new Date(v).getTime();
+}
 
 // --- ios keyboard ---
 const KB_LAYOUTS = {
@@ -380,16 +420,16 @@ async function sendDrink(){
   if(!raw)return;
   inputText='';updateFakeInput();
   hideKeyboard();
+  const ts = pendingBackdateTs || Date.now();
+  pendingBackdateTs = null;
   const r=await fetch(`${API}/sessions/${cur}/drinks`,{
     method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({raw,ts:Date.now()})
+    body:JSON.stringify({raw,ts})
   });
   const drink=await r.json();
-  const s=getSession();
-  s.drinks.push(drink);
-  s.bac=drink.bac;
-  s.total_std=drink.std_total;
-  renderMessages();renderList();
+  // reload session so all drinks reflect recomputed bacs
+  await loadSessions();
+  renderMessages();
 }
 
 document.getElementById('send-btn').onclick=sendDrink;
@@ -447,6 +487,50 @@ document.getElementById('delete-confirm').onclick=async()=>{
     await loadSessions();
     if(cur){const s=getSession();if(s)renderMessages();}
   }
+};
+document.getElementById('edit-time-btn').onclick=()=>{
+  if(!pendingDeleteId)return;
+  pendingEditId=pendingDeleteId;
+  const s=getSession();
+  const d=s.drinks.find(x=>x.id===pendingEditId);
+  if(!d)return;
+  document.getElementById('edit-time-input').value=tsToLocalInput(d.ts);
+  document.getElementById('delete-overlay').style.display='none';
+  document.getElementById('edit-time-overlay').style.display='flex';
+};
+document.getElementById('edit-time-cancel').onclick=()=>{
+  document.getElementById('edit-time-overlay').style.display='none';
+  document.querySelectorAll('.msg-sent.selected').forEach(el=>el.classList.remove('selected'));
+  pendingEditId=null;pendingDeleteId=null;
+};
+document.getElementById('edit-time-save').onclick=async()=>{
+  const val=document.getElementById('edit-time-input').value;
+  if(val&&pendingEditId){
+    await fetch(`${API}/drinks/${pendingEditId}`,{
+      method:'PATCH',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({ts:localInputToTs(val)})
+    });
+    await loadSessions();
+    renderMessages();
+  }
+  document.getElementById('edit-time-overlay').style.display='none';
+  document.querySelectorAll('.msg-sent.selected').forEach(el=>el.classList.remove('selected'));
+  pendingEditId=null;pendingDeleteId=null;
+};
+
+document.getElementById('time-btn').onclick=()=>{
+  document.getElementById('backdate-input').value=tsToLocalInput(Date.now());
+  document.getElementById('backdate-overlay').style.display='flex';
+};
+document.getElementById('backdate-now').onclick=()=>{
+  pendingBackdateTs=null;
+  document.getElementById('backdate-overlay').style.display='none';
+};
+document.getElementById('backdate-save').onclick=()=>{
+  const val=document.getElementById('backdate-input').value;
+  pendingBackdateTs=val?localInputToTs(val):null;
+  document.getElementById('backdate-overlay').style.display='none';
 };
 
 loadSessions();

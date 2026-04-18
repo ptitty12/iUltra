@@ -1,16 +1,16 @@
+
 from flask import Flask, request, jsonify, send_from_directory
 import sqlite3, os, re, random
 from datetime import datetime
 
 app = Flask(__name__, static_folder='static')
 
-DB_PATH = os.environ.get("DB_PATH", "/data/drinks.db")
+DB_PATH = os.environ.get("DB_PATH", "/data/drinks.db" if os.path.isdir("/data") else "./drinks.db")
 
 # --- body params (widmark formula inputs) ---
 WEIGHT_KG = 86.0
 WIDMARK_R = 0.68
 METABOLISM = 0.015  # %/hr
-
 # --- drink parsing ---
 DRINK_PATTERNS = [
     (re.compile(r"\b(light\s*beer|bud\s*light|miller\s*lite|coors\s*light|michelob\s*ultra|ultra|mich\s*ultra|natural\s*light|natty\s*light|natty|keystone\s*light|keystone|busch\s*light|busch|pabst|pbr|rolling\s*rock|hamms|hamm|stroh|old\s*milwaukee|schlitz|genessee|genny|labatt\s*blue|labatt|molson\s*light|blue\s*moon\s*light|amstel\s*light|heineken\s*light|corona\s*light|modelo\s*light|dos\s*equis\s*light|tecate\s*light|fosters\s*light|carlsberg\s*light|peroni\s*leggera|sapporo\s*light|kirin\s*light|asahi\s*light|yuengling\s*light|lionshead|ice\s*house|icehouse|milwaukee\s*best|beast|the\s*beast|mic|mic\s*ultra|michelob)\b", re.I), "light beer", 4.2, 12),
@@ -55,6 +55,26 @@ def calc_bac(drinks, now_ms=None):
         bac += max(0, peak - METABOLISM * h)
     return max(0, bac)
 
+def recompute_session_bacs(conn, session_id):
+    """Recompute each drink's stored bac/std_total snapshot and reply_bac_str/reply_std
+    based on all drinks in the session sorted by ts. Called after any mutation."""
+    drinks = conn.execute(
+        "SELECT * FROM drinks WHERE session_id = ? ORDER BY ts ASC", (session_id,)
+    ).fetchall()
+    drinks = [dict(d) for d in drinks]
+    running_total = 0.0
+    for i, d in enumerate(drinks):
+        # bac at this drink's ts, based on all drinks with ts <= this one's ts
+        prior_and_self = drinks[:i+1]
+        bac = calc_bac(prior_and_self, d["ts"])
+        running_total += std_drinks(d["oz"], d["abv"])
+        conn.execute(
+            """UPDATE drinks SET bac = ?, std_total = ?, reply_bac_str = ?, reply_std = ?
+               WHERE id = ?""",
+            (bac, running_total, f"{bac:.3f}", f"{round(running_total)}", d["id"])
+        )
+    conn.commit()
+
 # --- reply phrases ---
 OPENERS = ["yeah we're on our way","just leaving now","omw, maybe 10 min","sounds good to me","lol yeah for sure","haha yeah that was wild","on my way now","just got here actually","yeah totally agree","that's so funny you say that","just parked","yeah pulling up now","dude same honestly","no yeah that makes sense","lmao right","yeah I saw that too"]
 CLOSERS = ["how are you doing?","what are you up to later?","you coming out tonight?","miss you btw","let me know when you're free","we should catch up soon","how was your day?","you eat yet?","you good?","what's the plan?","you still down for later?","call me when you can","hope you're having a good one","let me know!","you around this weekend?","hbu?"]
@@ -65,7 +85,9 @@ def get_db():
     return conn
 
 def init_db():
-    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+    db_dir = os.path.dirname(DB_PATH)
+    if db_dir:
+        os.makedirs(db_dir, exist_ok=True)
     conn = get_db()
     conn.executescript("""
         CREATE TABLE IF NOT EXISTS sessions (
@@ -160,7 +182,7 @@ def delete_session(session_id):
 def add_drink(session_id):
     body = request.get_json()
     raw = body["raw"]
-    ts = body["ts"]
+    ts = body["ts"]  # frontend can send past timestamps
 
     conn = get_db()
     s = conn.execute("SELECT id FROM sessions WHERE id = ?", (session_id,)).fetchone()
@@ -169,43 +191,55 @@ def add_drink(session_id):
         return jsonify({"error": "session not found"}), 404
 
     dtype, abv, oz = parse_drink(raw)
-
-    # fetch existing drinks to compute bac/total with new one added
-    existing = conn.execute(
-        "SELECT ts, oz, abv FROM drinks WHERE session_id = ? ORDER BY ts ASC", (session_id,)
-    ).fetchall()
-    all_drinks = [dict(d) for d in existing] + [{"ts": ts, "oz": oz, "abv": abv}]
-    bac = calc_bac(all_drinks, ts)
-    total_std = sum(std_drinks(d["oz"], d["abv"]) for d in all_drinks)
-
     opener = random.choice(OPENERS)
     closer = random.choice(CLOSERS)
-    bac_str = f"{bac:.3f}"
-    std_str = f"{round(total_std)}"
 
+    # insert first with placeholder bac/std_total, then recompute
     cur = conn.execute(
         """INSERT INTO drinks
            (session_id, raw, ts, type, abv, oz, bac, std_total,
             reply_opener, reply_bac_str, reply_std, reply_closer)
            VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
         (session_id, raw, ts, dtype, abv, oz,
-         bac, total_std, opener, bac_str, std_str, closer)
+         0.0, 0.0, opener, "0.000", "0", closer)
     )
     conn.commit()
     drink_id = cur.lastrowid
+
+    recompute_session_bacs(conn, session_id)
+
+    # fetch the final drink record with computed values
+    drink = conn.execute("SELECT * FROM drinks WHERE id = ?", (drink_id,)).fetchone()
     conn.close()
-    return jsonify({
-        "id": drink_id, "raw": raw, "ts": ts, "type": dtype, "abv": abv, "oz": oz,
-        "bac": bac, "std_total": total_std,
-        "reply_opener": opener, "reply_bac_str": bac_str,
-        "reply_std": std_str, "reply_closer": closer,
-    })
+    return jsonify(dict(drink))
+
+@app.route("/api/drinks/<int:drink_id>", methods=["PATCH"])
+def edit_drink(drink_id):
+    body = request.get_json()
+    conn = get_db()
+    drink = conn.execute("SELECT session_id FROM drinks WHERE id = ?", (drink_id,)).fetchone()
+    if not drink:
+        conn.close()
+        return jsonify({"error": "drink not found"}), 404
+
+    if "ts" in body:
+        conn.execute("UPDATE drinks SET ts = ? WHERE id = ?", (body["ts"], drink_id))
+    conn.commit()
+    recompute_session_bacs(conn, drink["session_id"])
+    conn.close()
+    return jsonify({"ok": True})
 
 @app.route("/api/drinks/<int:drink_id>", methods=["DELETE"])
 def delete_drink(drink_id):
     conn = get_db()
+    drink = conn.execute("SELECT session_id FROM drinks WHERE id = ?", (drink_id,)).fetchone()
+    if not drink:
+        conn.close()
+        return jsonify({"error": "drink not found"}), 404
+    session_id = drink["session_id"]
     conn.execute("DELETE FROM drinks WHERE id = ?", (drink_id,))
     conn.commit()
+    recompute_session_bacs(conn, session_id)
     conn.close()
     return jsonify({"ok": True})
 
