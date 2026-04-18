@@ -7,6 +7,8 @@
   <style>
     body { margin: 0; background: #1c1c1e; display: flex; justify-content: center; padding: 2rem 0; min-height: 100vh; }
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, 'SF Pro Text', sans-serif; }
+    *::-webkit-scrollbar { display: none; }
+    * { scrollbar-width: none; -ms-overflow-style: none; }
     .app { width: 100%; max-width: 420px; background: #000; min-height: 620px; border-radius: 40px; overflow: hidden; position: relative; }
     .list-view { display: flex; flex-direction: column; height: 620px; }
     .list-topbar { display: flex; justify-content: space-between; align-items: center; padding: 16px 16px 0; }
@@ -33,7 +35,9 @@
     .header-avatar { width: 36px; height: 36px; border-radius: 50%; background: #1d9e75; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 600; color: white; }
     .header-name { font-size: 12px; color: #fff; margin-top: 2px; font-weight: 500; }
     .messages { flex: 1; overflow-y: auto; padding: 8px 12px; display: flex; flex-direction: column; gap: 3px; background: #000; }
-    .msg-sent { align-self: flex-end; background: #0a84ff; color: white; padding: 8px 12px; border-radius: 18px 18px 4px 18px; max-width: 72%; font-size: 15px; line-height: 1.4; }
+    .msg-pair { display: flex; flex-direction: column; }
+    .msg-sent { align-self: flex-end; background: #0a84ff; color: white; padding: 8px 12px; border-radius: 18px 18px 4px 18px; max-width: 72%; font-size: 15px; line-height: 1.4; cursor: pointer; user-select: none; -webkit-user-select: none; }
+    .msg-sent.selected { outline: 2px solid #e24b4a; }
     .msg-recv { align-self: flex-start; background: #1c1c1e; color: #fff; padding: 10px 13px; border-radius: 18px 18px 18px 4px; max-width: 76%; font-size: 15px; line-height: 1.5; }
     .msg-time-center { font-size: 11px; color: #8e8e93; text-align: center; margin: 6px 0 2px; }
     .msg-ts { font-size: 11px; color: #8e8e93; align-self: flex-end; margin-top: 1px; margin-bottom: 4px; }
@@ -44,15 +48,16 @@
     .send-btn { width: 30px; height: 30px; border-radius: 50%; background: #0a84ff; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
     .send-btn svg { fill: white; }
     .empty-state { text-align: center; color: #636366; padding: 2rem; font-size: 14px; }
-    .rename-overlay { display: none; position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.75); z-index: 10; align-items: center; justify-content: center; border-radius: 40px; }
-    .rename-box { background: #1c1c1e; border-radius: 14px; padding: 20px; width: 280px; }
-    .rename-box p { color: #fff; font-size: 16px; font-weight: 500; margin-bottom: 12px; text-align: center; }
-    .rename-box input { width: 100%; background: #2c2c2e; border: 0.5px solid #3a3a3c; border-radius: 10px; padding: 10px 12px; color: #fff; font-size: 15px; outline: none; margin-bottom: 12px; }
-    .rename-box input:focus { border-color: #0a84ff; }
-    .rename-actions { display: flex; gap: 8px; }
-    .rename-actions button { flex: 1; padding: 10px; border-radius: 10px; border: none; font-size: 15px; cursor: pointer; }
+    .overlay { display: none; position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.75); z-index: 10; align-items: center; justify-content: center; border-radius: 40px; }
+    .modal-box { background: #1c1c1e; border-radius: 14px; padding: 20px; width: 280px; }
+    .modal-box p { color: #fff; font-size: 16px; font-weight: 500; margin-bottom: 12px; text-align: center; }
+    .modal-box input { width: 100%; background: #2c2c2e; border: 0.5px solid #3a3a3c; border-radius: 10px; padding: 10px 12px; color: #fff; font-size: 15px; outline: none; margin-bottom: 12px; }
+    .modal-box input:focus { border-color: #0a84ff; }
+    .modal-actions { display: flex; gap: 8px; }
+    .modal-actions button { flex: 1; padding: 10px; border-radius: 10px; border: none; font-size: 15px; cursor: pointer; }
     .btn-cancel { background: #2c2c2e; color: #fff; }
     .btn-save { background: #0a84ff; color: #fff; font-weight: 500; }
+    .btn-delete { background: #e24b4a; color: #fff; font-weight: 500; }
   </style>
 </head>
 <body>
@@ -100,62 +105,40 @@
     </div>
   </div>
 
-  <div class="rename-overlay" id="rename-overlay">
-    <div class="rename-box">
+  <div class="overlay" id="rename-overlay">
+    <div class="modal-box">
       <p>rename session</p>
       <input id="rename-input" placeholder="session name" />
-      <div class="rename-actions">
+      <div class="modal-actions">
         <button class="btn-cancel" id="rename-cancel">cancel</button>
         <button class="btn-save" id="rename-save">save</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="overlay" id="delete-overlay">
+    <div class="modal-box">
+      <p>delete this drink?</p>
+      <div class="modal-actions">
+        <button class="btn-cancel" id="delete-cancel">cancel</button>
+        <button class="btn-delete" id="delete-confirm">delete</button>
       </div>
     </div>
   </div>
 </div>
 
 <script>
-const WEIGHT_KG=86,WIDMARK_R=0.68,METABOLISM=0.015;
-const DRINK_PATTERNS=[
-  {re:/\b(light\s*beer|bud\s*light|miller\s*lite|coors\s*light)\b/i,type:'light beer',abv:4.2,oz:12},
-  {re:/\b(beer|lager|pilsner|heineken|corona|modelo|bud|budweiser|stella)\b/i,type:'beer',abv:5.0,oz:12},
-  {re:/\b(ipa|pale\s*ale|stout|porter|ale|hazy|sour|craft)\b/i,type:'craft beer',abv:6.5,oz:12},
-  {re:/\b(wine|chardonnay|cab|merlot|pinot|ros[eé]|sauvignon|riesling)\b/i,type:'wine',abv:13.0,oz:5},
-  {re:/\b(shot|tequila|vodka|rum|gin|whiskey|whisky|bourbon|scotch|mezcal|brandy|cognac)\b/i,type:'spirit shot',abv:40.0,oz:1.5},
-  {re:/\b(cocktail|margarita|mojito|old\s*fashion|negroni|manhattan|martini|daiquiri|sour)\b/i,type:'cocktail',abv:20.0,oz:4},
-  {re:/\b(seltzer|white\s*claw|truly|hard\s*selt)\b/i,type:'hard seltzer',abv:5.0,oz:12},
-];
-function parseDrink(t){
-  let type='drink',abv=5.0,oz=12;
-  for(const p of DRINK_PATTERNS){if(p.re.test(t)){type=p.type;abv=p.abv;oz=p.oz;break;}}
-  const am=t.match(/(\d+(?:\.\d+)?)\s*%/);if(am)abv=parseFloat(am[1]);
-  const om=t.match(/(\d+(?:\.\d+)?)\s*oz/i);if(om)oz=parseFloat(om[1]);
-  return{type,abv,oz};
-}
-function calcBAC(drinks){
-  const now=Date.now();let bac=0;
-  for(const d of drinks){
-    const h=(now-d.ts)/3600000,g=(d.oz*29.5735)*(d.abv/100)*0.789;
-    bac+=Math.max(0,(g/(WEIGHT_KG*1000*WIDMARK_R))*100-METABOLISM*h);
-  }
-  return Math.max(0,bac);
-}
-function stdDrinks(d){return(d.oz*29.5735*(d.abv/100)*0.789)/14;}
-function totalStd(s){return s.drinks.reduce((a,d)=>a+stdDrinks(d),0);}
 function bacColor(bac){return bac<0.04?'#1d9e75':bac<0.08?'#ba7517':'#e24b4a';}
 function fmtTime(ts){return new Date(ts).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});}
 function fmtSessionTime(ts){
   const d=new Date(ts),now=new Date();
   return d.toDateString()===now.toDateString()?fmtTime(ts):d.toLocaleDateString([],{month:'short',day:'numeric'});
 }
-const OPENERS=["yeah we're on our way","just leaving now","omw, maybe 10 min","sounds good to me","lol yeah for sure","haha yeah that was wild","on my way now","just got here actually","yeah totally agree","that's so funny you say that","just parked","yeah pulling up now","dude same honestly","no yeah that makes sense","lmao right","yeah I saw that too"];
-const CLOSERS=["how are you doing?","what are you up to later?","you coming out tonight?","miss you btw","let me know when you're free","we should catch up soon","how was your day?","you eat yet?","you good?","what's the plan?","you still down for later?","call me when you can","hope you're having a good one","let me know!","you around this weekend?","hbu?"];
-function pick(arr){return arr[Math.floor(Math.random()*arr.length)];}
-function buildReply(bac,std){return{opener:pick(OPENERS),bacStr:bac.toFixed(3),std:std.toFixed(1),closer:pick(CLOSERS)};}
 
-const API = window.location.hostname === 'localhost'
-  ? 'http://localhost:8000'
-  : 'https://drinks-api.ptaylor.dev';
+const API='/api';
 let sessions=[];
 let cur=null;
+let pendingDeleteId=null;
 
 async function loadSessions(){
   const r=await fetch(`${API}/sessions`);
@@ -170,10 +153,9 @@ function renderList(){
   list.innerHTML='';
   if(!sessions.length){list.innerHTML='<div class="empty-state">no sessions yet — tap compose to start</div>';return;}
   sessions.forEach(s=>{
-    const total=totalStd(s),bac=calcBAC(s.drinks);
     const last=s.drinks.length?s.drinks[s.drinks.length-1]:null;
     const row=document.createElement('div');row.className='session-row';
-    row.innerHTML=`<div class="avatar" style="background:${bacColor(bac)}">${total.toFixed(1)}</div><div class="session-info"><div class="session-name">${s.name}</div><div class="session-preview">${last?last.raw:'no drinks yet'}</div></div><div class="session-time">${fmtSessionTime(s.start)}</div>`;
+    row.innerHTML=`<div class="avatar" style="background:${bacColor(s.bac)}">${s.total_std.toFixed(1)}</div><div class="session-info"><div class="session-name">${s.name}</div><div class="session-preview">${last?last.raw:'no drinks yet'}</div></div><div class="session-time">${fmtSessionTime(s.start)}</div>`;
     row.onclick=()=>openSession(s.id);
     list.appendChild(row);
   });
@@ -189,10 +171,26 @@ function openSession(id){
 
 function updateHeader(){
   const s=getSession();if(!s)return;
-  const total=totalStd(s),bac=calcBAC(s.drinks);
   const av=document.getElementById('header-avatar');
-  av.textContent=total.toFixed(1);av.style.background=bacColor(bac);
+  av.textContent=s.total_std.toFixed(1);
+  av.style.background=bacColor(s.bac);
   document.getElementById('header-name').textContent=s.name;
+}
+
+function attachLongPress(el, drinkId){
+  let timer=null;
+  const start=()=>{timer=setTimeout(()=>{
+    pendingDeleteId=drinkId;
+    el.classList.add('selected');
+    document.getElementById('delete-overlay').style.display='flex';
+  },500);};
+  const cancel=()=>{if(timer){clearTimeout(timer);timer=null;}};
+  el.addEventListener('mousedown',start);
+  el.addEventListener('touchstart',start);
+  el.addEventListener('mouseup',cancel);
+  el.addEventListener('mouseleave',cancel);
+  el.addEventListener('touchend',cancel);
+  el.addEventListener('touchcancel',cancel);
 }
 
 function renderMessages(){
@@ -204,6 +202,7 @@ function renderMessages(){
   c.appendChild(td);
   s.drinks.forEach(d=>{
     const sent=document.createElement('div');sent.className='msg-sent';sent.textContent=d.raw;
+    attachLongPress(sent, d.id);
     c.appendChild(sent);
     const ts=document.createElement('div');ts.className='msg-ts';ts.textContent=fmtTime(d.ts);
     c.appendChild(ts);
@@ -221,30 +220,16 @@ function renderMessages(){
 async function sendDrink(){
   const input=document.getElementById('drink-input'),raw=input.value.trim();
   if(!raw)return;input.value='';
-  const s=getSession();
-  const parsed=parseDrink(raw),ts=Date.now();
-  // calc bac against current drinks + this new one
-  const tempDrinks=[...s.drinks,{...parsed,ts}];
-  const bac=calcBAC(tempDrinks);
-  s.drinks.push({...parsed,ts,bac,std_total:totalStd({drinks:tempDrinks})});
-  const std=totalStd(s);
-  const reply=buildReply(bac,std);
-  // optimistic render
-  const lastDrink=s.drinks[s.drinks.length-1];
-  lastDrink.reply_opener=reply.opener;lastDrink.reply_bac_str=reply.bacStr;
-  lastDrink.reply_std=reply.std;lastDrink.reply_closer=reply.closer;
-  renderMessages();renderList();
-  // persist
-  await fetch(`${API}/sessions/${cur}/drinks`,{
-    method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({
-      raw,ts,type:parsed.type,abv:parsed.abv,oz:parsed.oz,
-      bac,std_total:std,
-      reply_opener:reply.opener,reply_bac_str:reply.bacStr,
-      reply_std:reply.std,reply_closer:reply.closer
-    })
+  const r=await fetch(`${API}/sessions/${cur}/drinks`,{
+    method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({raw,ts:Date.now()})
   });
+  const drink=await r.json();
+  const s=getSession();
+  s.drinks.push(drink);
+  s.bac=drink.bac;
+  s.total_std=drink.std_total;
+  renderMessages();renderList();
 }
 
 document.getElementById('send-btn').onclick=sendDrink;
@@ -254,12 +239,14 @@ document.getElementById('back-btn').onclick=()=>{
   cur=null;
   document.getElementById('chat-view').style.display='none';
   document.getElementById('list-view').style.display='flex';
+  loadSessions();
 };
 
 document.getElementById('new-btn').onclick=async()=>{
   const name='Session '+new Date().toLocaleDateString([],{month:'short',day:'numeric'})+' '+fmtTime(Date.now());
   const r=await fetch(`${API}/sessions`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,start:Date.now()})});
   const s=await r.json();
+  s.bac=0;s.total_std=0;
   sessions.unshift(s);
   openSession(s.id);renderList();
 };
@@ -284,6 +271,21 @@ document.getElementById('rename-save').onclick=async()=>{
 document.getElementById('rename-input').onkeydown=e=>{
   if(e.key==='Enter')document.getElementById('rename-save').click();
   if(e.key==='Escape')document.getElementById('rename-cancel').click();
+};
+
+document.getElementById('delete-cancel').onclick=()=>{
+  document.querySelectorAll('.msg-sent.selected').forEach(el=>el.classList.remove('selected'));
+  document.getElementById('delete-overlay').style.display='none';
+  pendingDeleteId=null;
+};
+document.getElementById('delete-confirm').onclick=async()=>{
+  if(pendingDeleteId){
+    await fetch(`${API}/drinks/${pendingDeleteId}`,{method:'DELETE'});
+    pendingDeleteId=null;
+    document.getElementById('delete-overlay').style.display='none';
+    await loadSessions();
+    if(cur){const s=getSession();if(s)renderMessages();}
+  }
 };
 
 loadSessions();

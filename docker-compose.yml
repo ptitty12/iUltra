@@ -1,32 +1,13 @@
 services:
-  backend:
-    build:
-      context: .
-      dockerfile: Dockerfile
+  app:
+    build: .
     restart: unless-stopped
     environment:
       - DB_PATH=/data/drinks.db
     volumes:
       - sqlite_data:/data
-    networks:
-      - dokploy-network
-
-  frontend:
-    image: nginx:alpine
-    restart: unless-stopped
-    volumes:
-      - ./nginx.conf:/etc/nginx/conf.d/default.conf
-      - ./index.html:/usr/share/nginx/html/index.html
     ports:
-      - "3421:80"
-    depends_on:
-      - backend
-    networks:
-      - dokploy-network
+      - "3421:8000"
 
 volumes:
   sqlite_data:
-
-networks:
-  dokploy-network:
-    external: true
