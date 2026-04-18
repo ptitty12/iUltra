@@ -6,8 +6,12 @@ services:
       - DB_PATH=/data/drinks.db
     volumes:
       - sqlite_data:/data
-    ports:
-      - "3421:8000"
+    networks:
+      - dokploy-network
 
 volumes:
   sqlite_data:
+
+networks:
+  dokploy-network:
+    external: true
