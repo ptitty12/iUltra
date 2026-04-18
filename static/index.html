@@ -160,7 +160,7 @@
 </div>
 
 <script>
-function bacColor(bac){return bac<0.04?'#1d9e75':bac<0.08?'#ba7517':'#e24b4a';}
+function drinkColor(total){return total<7?'#1d9e75':total<=12?'#ba7517':'#e24b4a';}
 function fmtTime(ts){return new Date(ts).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});}
 function fmtSessionTime(ts){
   const d=new Date(ts),now=new Date();
@@ -313,7 +313,7 @@ function renderList(){
   sessions.forEach(s=>{
     const last=s.drinks.length?s.drinks[s.drinks.length-1]:null;
     const row=document.createElement('div');row.className='session-row';
-    row.innerHTML=`<div class="avatar" style="background:${bacColor(s.bac)}">${s.total_std.toFixed(1)}</div><div class="session-info"><div class="session-name">${s.name}</div><div class="session-preview">${last?last.raw:'no drinks yet'}</div></div><div class="session-time">${fmtSessionTime(s.start)}</div>`;
+    row.innerHTML=`<div class="avatar" style="background:${drinkColor(s.total_std)}">${Math.round(s.total_std)}</div><div class="session-info"><div class="session-name">${s.name}</div><div class="session-preview">${last?last.raw:'no drinks yet'}</div></div><div class="session-time">${fmtSessionTime(s.start)}</div>`;
     row.onclick=()=>openSession(s.id);
     list.appendChild(row);
   });
@@ -330,8 +330,8 @@ function openSession(id){
 function updateHeader(){
   const s=getSession();if(!s)return;
   const av=document.getElementById('header-avatar');
-  av.textContent=s.total_std.toFixed(1);
-  av.style.background=bacColor(s.bac);
+  av.textContent=Math.round(s.total_std);
+  av.style.background=drinkColor(s.total_std);
   document.getElementById('header-name').textContent=s.name;
 }
 
@@ -366,7 +366,7 @@ function renderMessages(){
     c.appendChild(ts);
     const recv=document.createElement('div');recv.className='msg-recv';
     const p1=document.createElement('div');p1.textContent=d.reply_opener;
-    const p2=document.createElement('div');p2.textContent=`${d.reply_bac_str}%, ${d.reply_std} total`;p2.style.marginTop='6px';
+    const p2=document.createElement('div');p2.textContent=`${d.reply_bac_str}, ${d.reply_std} total`;p2.style.marginTop='6px';
     const p3=document.createElement('div');p3.textContent=d.reply_closer;p3.style.marginTop='6px';
     recv.appendChild(p1);recv.appendChild(p2);recv.appendChild(p3);
     c.appendChild(recv);
