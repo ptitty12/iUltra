@@ -47,13 +47,14 @@ def calc_bac(drinks, now_ms=None):
     """widmark bac at now_ms given list of {ts, oz, abv}"""
     if now_ms is None:
         now_ms = int(datetime.now().timestamp() * 1000)
-    bac = 0.0
+    if not drinks:
+        return 0.0
+    total_peak = 0.0
     for d in drinks:
-        h = (now_ms - d["ts"]) / 3600000
         grams = (d["oz"] * 29.5735) * (d["abv"] / 100) * 0.789
-        peak = (grams / (WEIGHT_KG * 1000 * WIDMARK_R)) * 100
-        bac += max(0, peak - METABOLISM * h)
-    return max(0, bac)
+        total_peak += (grams / (WEIGHT_KG * 1000 * WIDMARK_R)) * 100
+    h = (now_ms - min(d["ts"] for d in drinks)) / 3600000
+    return max(0, total_peak - METABOLISM * h)
 
 def recompute_session_bacs(conn, session_id):
     """Recompute each drink's stored bac/std_total snapshot and reply_bac_str/reply_std
