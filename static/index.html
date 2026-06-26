@@ -12,15 +12,16 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Messages">
   <style>
-    body { margin: 0; background: #000; display: flex; justify-content: center; min-height: 100vh; min-height: 100dvh; }
+    html { height: 100%; overflow: hidden; }
+    body { margin: 0; background: #000; display: flex; justify-content: center; height: 100%; overflow: hidden; }
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, 'SF Pro Text', sans-serif; -webkit-tap-highlight-color: transparent; }
     *::-webkit-scrollbar { display: none; }
     * { scrollbar-width: none; -ms-overflow-style: none; }
-    .app { width: 100%; max-width: 420px; background: #000; min-height: 100vh; min-height: 100dvh; position: relative; }
-    .list-view { display: flex; flex-direction: column; height: 100vh; height: 100dvh; }
+    .app { width: 100%; max-width: 420px; background: #000; height: 100%; position: relative; overflow: hidden; }
+    .list-view { display: flex; flex-direction: column; height: 100%; }
     @media (min-width: 500px) {
       body { padding: 2rem 0; background: #1c1c1e; }
-      .app { min-height: 620px; border-radius: 40px; overflow: hidden; }
+      .app { height: auto; min-height: 620px; border-radius: 40px; overflow: hidden; }
       .list-view { height: 620px; }
       .chat-view { height: 620px !important; }
     }
@@ -40,7 +41,7 @@
     .search-bar { display: flex; align-items: center; gap: 8px; background: #1c1c1e; border-radius: 12px; padding: 8px 12px; }
     .search-bar span { font-size: 16px; color: #636366; flex: 1; }
     .search-right-icons { display: flex; gap: 14px; align-items: center; }
-    .chat-view { display: none; flex-direction: column; height: 100vh; height: 100dvh; background: #000; }
+    .chat-view { display: none; flex-direction: column; height: 100%; background: #000; }
     .chat-header { display: flex; align-items: center; padding: 10px 12px 8px; border-bottom: 0.5px solid #2c2c2e; }
     .back-btn { color: #0a84ff; cursor: pointer; padding: 4px 8px 4px 0; display: flex; align-items: center; gap: 2px; }
     .back-label { font-size: 16px; color: #0a84ff; }
@@ -208,11 +209,13 @@ msgInput.addEventListener('keydown', e => {
 
 if (window.visualViewport) {
   window.visualViewport.addEventListener('resize', () => {
-    const cv = document.getElementById('chat-view');
-    if (cv.style.display === 'none') return;
-    cv.style.height = window.visualViewport.height + 'px';
-    const m = document.getElementById('messages');
-    m.scrollTop = m.scrollHeight;
+    document.documentElement.style.height = window.visualViewport.height + 'px';
+    if (document.getElementById('chat-view').style.display !== 'none') {
+      requestAnimationFrame(() => {
+        const m = document.getElementById('messages');
+        m.scrollTop = m.scrollHeight;
+      });
+    }
   });
 }
 
