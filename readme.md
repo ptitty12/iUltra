@@ -42,3 +42,5 @@ Production: push to the repo, Dokploy redeploys automatically. SQLite file lives
 ## iOS tip
 
 On iPhone, open the site in Safari, hit share → "Add to Home Screen". Launching from that icon opens the app fullscreen with no Safari chrome, so it really does look like the Messages app.
+
+i love this thing
