@@ -43,18 +43,22 @@ def parse_drink(text):
 def std_drinks(oz, abv):
     return (oz * 29.5735 * (abv / 100) * 0.789) / 14
 
+def peak_bac(drinks):
+    """undecayed widmark bac for a list of {oz, abv} — the value bac decays down from"""
+    total_peak = 0.0
+    for d in drinks:
+        grams = (d["oz"] * 29.5735) * (d["abv"] / 100) * 0.789
+        total_peak += (grams / (WEIGHT_KG * 1000 * WIDMARK_R)) * 100
+    return total_peak
+
 def calc_bac(drinks, now_ms=None):
     """widmark bac at now_ms given list of {ts, oz, abv}"""
     if now_ms is None:
         now_ms = int(datetime.now().timestamp() * 1000)
     if not drinks:
         return 0.0
-    total_peak = 0.0
-    for d in drinks:
-        grams = (d["oz"] * 29.5735) * (d["abv"] / 100) * 0.789
-        total_peak += (grams / (WEIGHT_KG * 1000 * WIDMARK_R)) * 100
     h = (now_ms - min(d["ts"] for d in drinks)) / 3600000
-    return max(0, total_peak - METABOLISM * h)
+    return max(0, peak_bac(drinks) - METABOLISM * h)
 
 def recompute_session_bacs(conn, session_id):
     """Recompute each drink's stored bac/std_total snapshot and reply_bac_str/reply_std
@@ -144,6 +148,12 @@ def list_sessions():
             "drinks": drink_dicts,
             "bac": bac,
             "total_std": total_std,
+            # the client re-derives bac for "right now" from these so the header
+            # keeps ticking down between fetches, using the same widmark constants
+            "bac_peak": peak_bac(drink_dicts),
+            "first_ts": min((d["ts"] for d in drink_dicts), default=None),
+            "metabolism": METABOLISM,
+            "server_now": now_ms,
         })
     conn.close()
     return jsonify(result)
@@ -159,7 +169,17 @@ def create_session():
     conn.commit()
     sid = cur.lastrowid
     conn.close()
-    return jsonify({"id": sid, "name": body["name"], "start": body["start"], "drinks": []})
+    return jsonify({
+        "id": sid,
+        "name": body["name"],
+        "start": body["start"],
+        "drinks": [],
+        "bac": 0.0,
+        "total_std": 0.0,
+        "bac_peak": 0.0,
+        "first_ts": None,
+        "metabolism": METABOLISM,
+    })
 
 @app.route("/api/sessions/<int:session_id>", methods=["PATCH"])
 def rename_session(session_id):
