@@ -28,6 +28,26 @@ DRINK_PATTERNS = [
     (re.compile(r"\b(seltzer|white\s*claw|truly|hard\s*selt|hard\s*seltzer|bon\s*viv|bon\s*vivant|vizzy|bud\s*light\s*seltzer|bud\s*seltzer|corona\s*seltzer|corona\s*hard|michelob\s*ultra\s*seltzer|ultra\s*seltzer|naturdays|natural\s*light\s*seltzer|natty\s*seltzer|topo\s*chico\s*hard|topo\s*chico|lone\s*river|ranch\s*water\s*can|high\s*noon|aha\s*topo|cacti|brizzy|press|press\s*hard\s*seltzer|straightaway|austere|social|crook|crook\s*and\s*marker|noca|wild\s*basin|oskar\s*blues\s*seltzer|Two\s*Robbers|two\s*robbers|pabst\s*hard|pabst\s*seltzer|rolling\s*seltzer|corona\s*refresca|seagrams\s*escape|mikes\s*harder|mike\s*harder|mikes\s*hard|mikes|four\s*loko\s*hard|four\s*loko|loco|loco\s*hard|beast\s*ice|beast\s*seltzer|beast\s*light\s*seltzer|easy\s*ice|arctic\s*ice)\b", re.I), "hard seltzer", 5.0, 12),
 ]
 
+def build_vocab():
+    """Pull the plain-word alternatives back out of DRINK_PATTERNS so the keyboard's
+    suggestion strip offers names that are guaranteed to parse. Anything with regex
+    punctuation or accents left in it is skipped — there's an ascii spelling of each."""
+    seen, vocab = set(), []
+    for pat, _t, _a, _o in DRINK_PATTERNS:
+        m = re.match(r"^\\b\((.*)\)\\b$", pat.pattern, re.S)
+        if not m:
+            continue
+        for alt in m.group(1).split("|"):
+            word = alt.replace(r"\s*", " ").strip()
+            if not word or not re.fullmatch(r"[a-z0-9 ]+", word):
+                continue
+            if word not in seen:
+                seen.add(word)
+                vocab.append(word)
+    return vocab
+
+VOCAB = build_vocab()
+
 def parse_drink(text):
     dtype, abv, oz = "drink", 5.0, 12.0
     for pat, t, a, o in DRINK_PATTERNS:
@@ -127,6 +147,10 @@ init_db()
 @app.route("/")
 def index():
     return send_from_directory("static", "index.html")
+
+@app.route("/api/vocab", methods=["GET"])
+def vocab():
+    return jsonify(VOCAB)
 
 @app.route("/api/sessions", methods=["GET"])
 def list_sessions():
