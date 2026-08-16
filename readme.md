@@ -12,7 +12,20 @@ The contact avatar at the top of a conversation shows your running standard drin
 
 Flask serves both the HTML and a small JSON API. SQLite for persistence. Single container, deployed via docker-compose on a VPS running Dokploy, which handles TLS/routing through Traefik. The frontend is plain vanilla JS, no framework — one HTML file.
 
-The message box is a `contenteditable` div rather than an `<input>`, and the fields inside the modals stay `disabled` while their modal is closed. Both are on purpose: a real form field on the page makes mobile browsers stick a prev/next/done navigation bar above the keyboard, which is an obvious tell that you're in a form and not in Messages.
+### The keyboard
+
+The keyboard is drawn in the page — an iOS-style dark keyboard with a QuickType-style suggestion strip, key pop-ups, shift/caps, number and symbol layers, and hold-to-repeat backspace. Nothing in the app is ever focused, so the system keyboard never opens.
+
+That's deliberate, and it's the whole reason the custom keyboard exists. iOS attaches an accessory bar to the system keyboard, and it gives the app away:
+
+- If there are real form fields on the page, you get the **prev / next / done** navigation bar.
+- On any focused editable element at all — `<input>`, `<textarea>`, `contenteditable`, doesn't matter — you get the **AutoFill bar** with the passwords key, credit card, and address pin.
+
+The second one can't be turned off from a web page. There is no API for it in mobile Safari or in a home-screen web app; only a native wrapper can clear `inputAccessoryView`. `autocomplete="off"`, `inputmode`, ARIA roles — none of them touch it. The only way to have a keyboard with no bar over it is to not use the system keyboard, so the app draws its own.
+
+Two things fall out of that for free: nothing ever resizes the visual viewport (the system keyboard sliding up used to shove the transcript around), and the suggestion strip can offer real drink names instead of English words. Those come from `/api/vocab`, which pulls the plain-word alternatives back out of `DRINK_PATTERNS`, so anything the strip offers is guaranteed to parse to a real ABV.
+
+The modals are the last place with real fields, and they stay `disabled` while their overlay is hidden so nothing on the page is focusable during normal use. Renaming a session types on the drawn keyboard too; the date pickers are left native, since those open a wheel picker rather than a keyboard.
 
 The structure is dead simple:
 
