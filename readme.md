@@ -6,11 +6,13 @@ A drink tracker that looks like iMessages.
 
 You log drinks by "texting" them. Each conversation is a drinking session, each "sent message" is a drink you had. The app parses what you typed ("heineken", "ipa 6%", "whiskey", etc.), figures out the ABV, runs the Widmark formula to estimate your BAC in real time, and replies with something that looks like a normal text — some innocuous opener, the BAC tucked in the middle, and a conversational closer. So if someone glances at your screen, it just looks like you're texting a friend.
 
-The contact avatar shows your running standard drink count for that session, and turns green → amber → red as your BAC climbs. Long-press any drink to delete it (with a confirmation) — the BAC and counter update accordingly.
+The contact avatar at the top of a conversation shows your running standard drink count with your current estimated BAC underneath it, and turns green → amber → red as the count climbs. That BAC is "as of right now" — it keeps ticking down as you sober off, without needing a new drink logged. Long-press any drink to delete it or change its time (with a confirmation) — the BAC and counter update accordingly.
 
 ## Tech
 
-Flask serves both the HTML and a small JSON API. SQLite for persistence. Single container, deployed via docker-compose on a VPS running Dokploy, which handles TLS/routing through Traefik. The frontend is plain vanilla JS, no framework — one HTML file with a custom iOS-style keyboard so the native mobile keyboard never pops up and gives it away.
+Flask serves both the HTML and a small JSON API. SQLite for persistence. Single container, deployed via docker-compose on a VPS running Dokploy, which handles TLS/routing through Traefik. The frontend is plain vanilla JS, no framework — one HTML file.
+
+The message box is a `contenteditable` div rather than an `<input>`, and the fields inside the modals stay `disabled` while their modal is closed. Both are on purpose: a real form field on the page makes mobile browsers stick a prev/next/done navigation bar above the keyboard, which is an obvious tell that you're in a form and not in Messages.
 
 The structure is dead simple:
 
