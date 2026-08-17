@@ -4,7 +4,7 @@ A drink tracker that looks like iMessages.
 
 ## What it does
 
-You log drinks by "texting" them. Each conversation is a drinking session, each "sent message" is a drink you had. The app parses what you typed ("heineken", "ipa 6%", "whiskey", etc.), figures out the ABV, runs the Widmark formula to estimate your BAC in real time, and replies with something that looks like a normal text — some innocuous opener, the BAC tucked in the middle, and a conversational closer. So if someone glances at your screen, it just looks like you're texting a friend.
+You log drinks by "texting" them. Each conversation is a drinking session, each "sent message" is a drink you had. The app parses what you typed ("heineken", "ipa 6%", "whiskey", "2 beers", "3 shots", "double whiskey"), figures out the ABV, runs the Widmark formula to estimate your BAC in real time, and replies with something that looks like a normal text — some innocuous opener, the BAC tucked in the middle, and a conversational closer. So if someone glances at your screen, it just looks like you're texting a friend.
 
 The contact avatar at the top of a conversation shows your running standard drink count with your current estimated BAC underneath it, and turns green → amber → red as the count climbs. That BAC is "as of right now" — it keeps ticking down as you sober off, without needing a new drink logged. Long-press any drink to delete it or change its time (with a confirmation) — the BAC and counter update accordingly.
 
@@ -41,7 +41,11 @@ The structure is dead simple:
 └── requirements.txt
 ```
 
-All BAC and drink math lives on the backend so the frontend can't be tampered with. The phone weight/sex constants for the Widmark formula are hardcoded at the top of `app.py` — change them there if you need to recalibrate.
+All BAC and drink math lives on the backend so the frontend can't be tampered with. The phone weight/sex constants for the Widmark formula are hardcoded at the top of `app.py` — change them there if you need to recalibrate. **They're the single biggest lever on every number the app shows**: `WEIGHT_KG` is set to 86 (190 lb) and `WIDMARK_R` to 0.68, and if your real weight is lower than that, every BAC reads proportionally low.
+
+`calc_bac` walks the drinks in order and burns alcohol off *between* them, clamping at zero at each step. The obvious shortcut — sum every drink's peak, subtract `METABOLISM × (time since the first drink)` — is wrong, and wrong in the dangerous direction: it keeps eliminating through stretches where there was nothing left to eliminate, so one beer at dinner banks negative alcohol against everything you drink later that night. A beer at 6pm followed by three at 1am used to read 0.000.
+
+Quantities are parsed too — `2 beers`, `two beers`, `beer x2`, `a couple beers`, `3 shots`, `double whiskey`. The count scales the volume, so the standard-drink count and BAC both follow. It's skipped when the whole message is itself a drink name, so brands that read like counts (`two robbers`, `four loko`, `1800`, `151`, `3 floyds`, `triple sec`) still come out as one drink. Plurals match the dictionary as well — before, `beers` and `shots` missed every pattern and silently fell back to the generic 12 oz / 5% default.
 
 ## Running it
 

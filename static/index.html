@@ -491,6 +491,8 @@ document.querySelectorAll('.overlay input,.overlay select,.overlay textarea').fo
 async function loadSessions(){
   const r=await fetch(`${API}/sessions`);
   sessions=await r.json();
+  const at=Date.now();
+  sessions.forEach(s=>{s._fetchedAt=at;});
   renderList();
 }
 
@@ -516,13 +518,14 @@ function openSession(id){
   updateHeader();renderMessages();showKeyboard();
 }
 
-// bac as of right now, extrapolated from the server's widmark numbers so it keeps
-// burning off between fetches instead of freezing at whatever it was on load
+// bac as of right now: the server's value burned down by however long ago we
+// fetched it. measured against our own clock on both ends, so a phone whose time
+// is off from the server's still gets the right elapsed time.
 function currentBac(s){
   if(!s) return 0;
-  if(s.first_ts==null || s.bac_peak==null) return Math.max(0, s.bac||0);
   const met = s.metabolism!=null ? s.metabolism : 0.015;
-  return Math.max(0, s.bac_peak - met * (Date.now() - s.first_ts) / 3600000);
+  const since = Date.now() - (s._fetchedAt || Date.now());
+  return Math.max(0, (s.bac||0) - met * since / 3600000);
 }
 
 function updateHeader(){
