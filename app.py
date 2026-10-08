@@ -179,7 +179,13 @@ def init_db():
     # reply_text: JSON list of bubbles; added after the first release, so migrate in place
     cols = {r["name"] for r in conn.execute("PRAGMA table_info(drinks)").fetchall()}
     if "reply_text" not in cols:
-        conn.execute("ALTER TABLE drinks ADD COLUMN reply_text TEXT")
+        try:
+            conn.execute("ALTER TABLE drinks ADD COLUMN reply_text TEXT")
+        except sqlite3.OperationalError as e:
+            # two gunicorn workers import this module at the same time; whoever
+            # loses the race sees "duplicate column name" and that's fine
+            if "duplicate column" not in str(e).lower():
+                raise
     conn.commit()
     conn.close()
 
