@@ -377,32 +377,6 @@ def delete_drink(drink_id):
     conn.close()
     return jsonify({"ok": True})
 
-# --- keyboard vocabulary: every name the parser knows, so QuickType can suggest them ---
-_VOCAB = None
-
-def vocab():
-    global _VOCAB
-    if _VOCAB is None:
-        words = []
-        seen = set()
-        for pat, dtype, _, _ in DRINK_PATTERNS:
-            body = pat.pattern
-            body = body[body.index("(") + 1:body.rindex(")")]
-            for alt in body.split("|"):
-                w = alt.replace("\\s*", " ").replace("\\.", ".").strip().lower()
-                if not w or re.search(r"[\\\[\]\(\)\?\+\*\{\}\^\$]", w):
-                    continue
-                if w in seen:
-                    continue
-                seen.add(w)
-                words.append({"w": w, "t": dtype})
-        _VOCAB = words
-    return _VOCAB
-
-@app.route("/api/vocab")
-def get_vocab():
-    return jsonify(vocab())
-
 # --- dashboard ---
 
 def local_day_index(ts_ms, tz):
