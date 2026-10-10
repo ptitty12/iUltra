@@ -16,7 +16,7 @@
   let replyTimers = [];
   let paintRaf = 0;
 
-  const kb = new IOSKeyboard($('keyboard'));
+  const input = $('msg-input');
 
   /* ------------------------------------------------------------------ utils */
   function el(tag, cls, text) {
@@ -69,12 +69,8 @@
     const now = Date.now();
     list.forEach((s) => { s.fetchedAt = now; s.drinks.sort((a, b) => a.ts - b.ts); });
     sessions = list;
-    kb.setHistory(sessions.flatMap((s) => s.drinks.map((d) => d.raw)));
     renderList();
     if (cur !== null) updateHeader();
-  }
-  async function loadVocab() {
-    try { kb.setVocab(await api('/vocab')); } catch (e) { /* suggestions are optional */ }
   }
 
   /* ------------------------------------------------------------------ list */
@@ -117,11 +113,11 @@
     requestAnimationFrame(() => { $('messages').scrollTop = $('messages').scrollHeight; });
   }
   function closeSession() {
-    kb.hide();
+    input.blur();
     cur = null;
     $('chat-view').hidden = true;
     $('list-view').hidden = false;
-    composerEditor.set('');
+    setDraft('');
     pendingBackdateTs = null;
     updatePlusState();
     loadSessions();
@@ -244,44 +240,47 @@
   }
 
   /* -------------------------------------------------------------- composer */
-  let draft = '';
-  const composerEditor = {
-    get: () => draft,
-    set: (t) => { draft = t; renderField($('field'), $('field-text'), draft); },
-    onReturn: () => sendDrink(),
-  };
-  function renderField(field, textEl, text) {
-    textEl.textContent = text;
-    const caret = el('span', 'caret');
-    textEl.appendChild(caret);
-    field.classList.toggle('has-text', text.length > 0);
+  // the composer is a real textarea, so the phone's own keyboard comes up
+  function syncComposer() {
+    input.style.height = 'auto';
+    input.style.height = Math.min(input.scrollHeight, 120) + 'px';
+    $('field').classList.toggle('has-text', input.value.trim().length > 0);
   }
-  renderField($('field'), $('field-text'), '');
-
-  function focusComposer() {
-    if (cur === null) return;
-    document.querySelectorAll('.field.focused').forEach((f) => f.classList.remove('focused'));
-    $('field').classList.add('focused');
-    kb.show(composerEditor);
-  }
-  kb.onOpen = () => {
-    if (cur !== null) {
-      $('chat-view').classList.add('kb-open');
-      const c = $('messages');
-      c.scrollTop = c.scrollHeight;
-      setTimeout(() => { c.scrollTop = c.scrollHeight; paintBubbles(); }, 270);
-    }
-  };
-  kb.onClose = () => {
+  function setDraft(t) { input.value = t; syncComposer(); }
+  input.addEventListener('input', syncComposer);
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); sendDrink(); }
+  });
+  input.addEventListener('focus', () => {
+    $('chat-view').classList.add('kb-open');
+    setTimeout(() => { const c = $('messages'); c.scrollTop = c.scrollHeight; paintBubbles(); }, 320);
+  });
+  input.addEventListener('blur', () => {
     $('chat-view').classList.remove('kb-open');
-    document.querySelectorAll('.field.focused').forEach((f) => f.classList.remove('focused'));
-    setTimeout(paintBubbles, 270);
-  };
-  $('field').addEventListener('pointerdown', (e) => { e.preventDefault(); focusComposer(); });
-  $('send-btn').addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); sendDrink(); });
-  $('audio-btn').addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); focusComposer(); });
-  // tapping into the thread puts the keyboard away, like dragging it down would
-  $('messages').addEventListener('pointerdown', (e) => { if (!e.target.closest('.msg')) kb.hide(); });
+    setTimeout(paintBubbles, 320);
+  });
+  // a tap anywhere in the pill (not just on the text) focuses the field
+  $('field').addEventListener('click', (e) => { if (e.target === $('field')) input.focus(); });
+  // pointerdown + preventDefault keeps focus in the field, so the keyboard stays up after send
+  $('send-btn').addEventListener('pointerdown', (e) => { e.preventDefault(); sendDrink(); });
+  $('audio-btn').addEventListener('click', () => input.focus());
+  // tapping into the thread puts the keyboard away
+  $('messages').addEventListener('pointerdown', (e) => { if (!e.target.closest('.msg')) input.blur(); });
+
+  // iOS doesn't resize the layout for the keyboard; it shrinks and pans the visual
+  // viewport. Pin the app to the visible area so the composer sits on the keyboard.
+  const vv = window.visualViewport;
+  function fitViewport() {
+    if (!vv) return;
+    const app = $('app');
+    const kbUp = window.innerHeight - vv.height > 120;
+    app.classList.toggle('kb', kbUp);
+    if (kbUp) {
+      app.style.setProperty('--app-h', vv.height + 'px');
+      app.style.setProperty('--app-y', vv.offsetTop + 'px');
+    }
+  }
+  if (vv) { vv.addEventListener('resize', fitViewport); vv.addEventListener('scroll', fitViewport); }
   $('back-btn').addEventListener('click', closeSession);
   $('header-center').addEventListener('click', () => { if (cur !== null) renameSheet(getSession()); });
   $('plus-btn').addEventListener('click', () => backdateSheet());
@@ -289,14 +288,14 @@
 
   function updatePlusState() {
     $('plus-btn').classList.toggle('pending', !!pendingBackdateTs);
-    $('field-placeholder').textContent = pendingBackdateTs ? `iMessage · ${fmtTime(pendingBackdateTs)}` : 'iMessage';
+    input.placeholder = pendingBackdateTs ? `iMessage · ${fmtTime(pendingBackdateTs)}` : 'iMessage';
   }
 
   async function sendDrink() {
-    const raw = draft.trim();
+    const raw = input.value.replace(/\s+/g, ' ').trim();
     const s = getSession();
     if (!raw || !s) return;
-    composerEditor.set('');
+    setDraft('');
     const ts = pendingBackdateTs || Date.now();
     pendingBackdateTs = null;
     updatePlusState();
@@ -336,7 +335,6 @@
   }
 
   /* ---------------------------------------------------------------- sheets */
-  let sheetEditor = null;
   function openSheet(html) {
     const sh = $('sheet');
     sh.innerHTML = html;
@@ -348,7 +346,7 @@
     $('sheet').hidden = true;
     $('scrim').hidden = true;
     $('sheet').innerHTML = '';
-    if (sheetEditor) { sheetEditor = null; kb.hide(); }
+    if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
   }
   $('scrim').addEventListener('pointerdown', (e) => { e.preventDefault(); closeSheet(); });
 
@@ -412,20 +410,16 @@
     } });
   }
 
-  // a text sheet is the composer's twin: a plain div fed by the in-page keyboard
   function textSheet({ title, value, onSave }) {
     const sh = openSheet(`<div class="sheet-title"><b>${esc(title)}</b></div>` +
-      '<div class="field glass focused" id="sheet-field"><div class="field-text" id="sheet-field-text"></div><span class="field-placeholder" id="sheet-ph">Type here</span></div>' +
+      '<div class="field glass"><input class="field-input" id="sheet-input" type="text" enterkeyhint="done" autocomplete="off" placeholder="Type here"></div>' +
       '<div class="sheet-row"><button class="sheet-btn cancel" data-a="cancel">Cancel</button><button class="sheet-btn primary" data-a="save">Save</button></div>');
-    let text = value || '';
-    const field = $('sheet-field'), textEl = $('sheet-field-text');
-    const save = async () => { const v = text.trim(); if (v) await onSave(v); closeSheet(); };
-    sheetEditor = { get: () => text, set: (t) => { text = t; renderField(field, textEl, text); }, onReturn: save };
-    renderField(field, textEl, text);
-    document.querySelectorAll('.field.focused').forEach((f) => { if (f !== field) f.classList.remove('focused'); });
-    field.classList.add('focused');
-    kb.show(sheetEditor);
-    field.addEventListener('pointerdown', (e) => { e.preventDefault(); field.classList.add('focused'); kb.show(sheetEditor); });
+    const box = $('sheet-input');
+    box.value = value || '';
+    const save = async () => { const v = box.value.trim(); if (v) await onSave(v); closeSheet(); };
+    box.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); save(); } });
+    box.focus();   // same tick as the user's tap, so iOS raises the keyboard
+    box.setSelectionRange(box.value.length, box.value.length);
     sh.onclick = (e) => {
       const a = e.target.closest('[data-a]')?.dataset.a;
       if (a === 'cancel') closeSheet();
@@ -533,7 +527,6 @@
     sessions.unshift(s);
     renderList();
     openSession(s.id);
-    setTimeout(focusComposer, 350);
   });
   $('edit-btn').addEventListener('click', () => Dashboard.open());
   $('dash-done').addEventListener('click', () => Dashboard.close());
@@ -545,9 +538,5 @@
   });
 
   document.addEventListener('visibilitychange', () => { if (!document.hidden) loadSessions(); });
-  // keep the keyboard from leaving stale state behind if a system gesture interrupts a press
-  window.addEventListener('blur', () => kb._release && kb._release());
-
-  loadVocab();
   loadSessions();
 })();
